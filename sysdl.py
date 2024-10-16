@@ -223,14 +223,17 @@ class TaskSchedulerWebApp:
          value="{value_date}"
          min="{min_date}"
          max="{max_date}" /><br>
-
-         <div class="wrapper-class"><input type="radio" name="duration" value=10><label for="radio1">10</label></div>
-         <div class="wrapper-class"><input type="radio" name="duration" value=15><label for="radio1">15</label></div>
-         <div class="wrapper-class"><input type="radio" name="duration" value=60><label for="radio1">60</label></div>
-         <div class="wrapper-class"><input type="radio" name="duration" value=5400 checked><label for="radio1">5400</label></div>
-
-        <input type="submit" value="Schedule Task" />
-        </form>
+         <select name="duration">
+         <option value=5>5</option>
+         <option value=10>10</option>
+         <option value=15>15</option>
+         <option value=60>60</option>
+         <option value=100>100</option>
+         <option value=3600>3600</option>
+         <option value=5400 selected>5400</option>
+         </select>
+         <input type="submit" value="Schedule Task" />
+         </form>
          <a href='/'>Back to Home</a>
         """%(style)
 
