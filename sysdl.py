@@ -12,11 +12,12 @@ import wave
 import struct  # Utilisé pour convertir la liste en format binaire
 
 
-RECORD_SECONDS = 10
+record_seconds = 5400
+#RECORD_SECONDS = 10
 #RECORD_SECONDS = 5400
-#cherrypy.config.update({'log.screen': False,
-#                        'log.access_file': 'access.log',
-#                        'log.error_file': 'error.log'})
+cherrypy.config.update({'log.screen': False,
+                        'log.access_file': 'access.log',
+                        'log.error_file': 'error.log'})
 
 # Le planificateur et les données des tâches
 scheduler = sched.scheduler(time.time, time.sleep)
@@ -27,6 +28,7 @@ fmt = "%a-%d/%m/%Y-%H:%M:%S"
 fmt_output = "%a-%d%m%Y-%H:%M:%S"
 fmt_calender = "%Y-%m-%dT%H:%M"
 style = """<style>
+           html {zoom: 300%;}
            body {
                background-color: black;
                color: white;
@@ -90,6 +92,7 @@ scheduler_thread.start()
 
 # Fonction de la tâche à exécuter
 def task_action(task_id, description):
+    global record_seconds
     # Retirer la tâche des futures tâches
     task = next((t for t in tasks if t['id'] == task_id), None)
     if task:
@@ -114,9 +117,10 @@ def task_action(task_id, description):
     wavefile.setnchannels(CHANNELS)
     wavefile.setsampwidth(2)  # 2 octets pour 16 bits (int16)
     wavefile.setframerate(RATE)
-   
+  
+    print(record_seconds)
 
-    for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+    for _ in range(0, int(RATE / CHUNK * int(record_seconds))):
         data = recorder.read()  # Lire un bloc de données
         # Convertir la liste en binaire (en int16)
         binary_data = struct.pack('<' + ('h' * len(data)), *data)
@@ -135,21 +139,22 @@ class TaskSchedulerWebApp:
     def index(self):
         return """
             %s
-            <h2>Interface</h2>
-            <a href="/list_future_tasks">List Future Tasks</a><br>
-            <a href="/list_past_tasks">List Past Tasks</a><br>
-            <a href="/schedule_task_calender">Schedule New Task</a><br>
+            <h2>Interface</h2><br>
+            <a href="/list_future_tasks">List Future Tasks</a><br><br>
+            <a href="/list_past_tasks">List Past Tasks</a><br><br>
+            <a href="/schedule_task_calender">Schedule New Task</a><br><br>
             <a href="/remove_task_form">Remove Task</a><br>
         """%(style)
 
     @cherrypy.expose
     def list_future_tasks(self):
         t = datetime.now().strftime(fmt)
-        response = f"%s<h2>List Future Tasks</h2>___[{t}]___<br>"%(style)
+        response = f"%s<h2>List Future Tasks</h2>[Current time]<br>[{t}]<br>"%(style)
         if len(tasks)>0:
             for task in tasks:
                 t = datetime.fromtimestamp(task['time']).strftime(fmt)
-                response += f"<br>[{task['id']}][{t}][{task['description']}]"
+                #response += f"<br>[{task['id']}][{t}][{task['description']}]"
+                response += f"<br>[{task['id']}][{task['description']}]<br>[{t}]<br>"
         else:
             response += f"<h3>No future tasks</h3>"
         response += "<br><a href='/'>Back to Home</a>"
@@ -158,11 +163,11 @@ class TaskSchedulerWebApp:
     @cherrypy.expose
     def list_past_tasks(self):
         t = datetime.now().strftime(fmt)
-        response = f"%s<h2>List Past Tasks</h2>___[{t}]___<br>"%(style)
+        response = f"%s<h2>List Past Tasks</h2>[Current time]<br>[{t}]<br>"%(style)
         if len(task_history)>0:
             for task in task_history:
                 t = datetime.fromtimestamp(task['time']).strftime(fmt)
-                response += f"<br>[{task['id']}][{t}][{task['description']}]"
+                response += f"<br>[{task['id']}][{task['description']}]<br>[{t}]<br>"
         else:
             response += f"<h3>No past tasks</h3>"
         response += "<br><a href='/'>Back to Home</a>"
@@ -197,6 +202,7 @@ class TaskSchedulerWebApp:
          value="{value_date}"
          min="{min_date}"
          max="{max_date}" />
+        <label>Duration (seconds): <input type="number" name="duration" value=5400 /></label><br>
         <input type="submit" value="Schedule Task" />
         </form>
          <a href='/'>Back to Home</a>
@@ -219,8 +225,10 @@ class TaskSchedulerWebApp:
     #    return f"%sTask {task_id} scheduled for {delay} seconds from now.<br><a href='/'>Back to Home</a>"%(style)
 
     @cherrypy.expose
-    def schedule_task(self, schedule_task_time):
+    def schedule_task(self, schedule_task_time, duration):
         global task_id_counter
+        global record_seconds
+        record_seconds = duration
         task_time = (datetime.strptime(schedule_task_time, fmt_calender)).timestamp()
         delay = task_time - time.time()
         schedule_task_time_fmt = datetime.fromtimestamp(task_time).strftime(fmt)
@@ -237,7 +245,6 @@ class TaskSchedulerWebApp:
         scheduler.enter(delay, 1, task_action, argument=(task_id, description))
         tasks.append({"id": task_id, "description": description, "time": task_time})
         save_tasks()  # Sauvegarder après ajout de la tâche
-
         return f"%sTask {task_id} scheduled to {schedule_task_time_fmt} <br><a href='/'>Back to Home</a>"%(style)
 
 
@@ -266,7 +273,7 @@ class TaskSchedulerWebApp:
                         scheduler.cancel(event)
                         tasks.remove(task)
                         save_tasks()  # Sauvegarder après suppression
-                        return f"Task {task_id} removed.<br><a href='/'>Back to Home</a>"
+                        return f"%sTask {task_id} removed.<br><a href='/'>Back to Home</a>"%(style)
         
         return f"%sTask {task_id} not found.<br><a href='/'>Back to Home</a>"%(style)
 
@@ -277,7 +284,7 @@ load_tasks()
 if __name__ == '__main__':
     cherrypy.quickstart(TaskSchedulerWebApp(), '/', {
         'global': {
-            'server.socket_host': '0.0.0.0',
+            'server.socket_host': '192.168.1.52',
             'server.socket_port': 8080,
         }
     })
