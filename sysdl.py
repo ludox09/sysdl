@@ -12,7 +12,6 @@ import wave
 import struct  # Utilisé pour convertir la liste en format binaire
 
 
-record_seconds = 5400
 #RECORD_SECONDS = 10
 #RECORD_SECONDS = 5400
 cherrypy.config.update({'log.screen': False,
@@ -22,10 +21,10 @@ cherrypy.config.update({'log.screen': False,
 # Le planificateur et les données des tâches
 scheduler = sched.scheduler(time.time, time.sleep)
 tasks = []
-task_history = []
+tasks_history = []
 task_id_counter = 0
 fmt = "%a-%d/%m/%Y-%H:%M:%S"
-fmt_output = "%a-%d%m%Y-%H:%M:%S"
+fmt_output = "%a-%d%m%Y-%H%M%S"
 fmt_calender = "%Y-%m-%dT%H:%M"
 style = """<style>
            html {zoom: 300%;}
@@ -65,7 +64,7 @@ CHUNK = 1024            # Taille des blocs de données
 # Sauvegarder les tâches futures dans un fichier JSON
 def save_tasks():
     with open(TASK_FILE, "w") as f:
-        json.dump(tasks, f)
+        json.dump(tasks+tasks_history, f)
 
 # Charger les tâches à partir d'un fichier JSON
 def load_tasks():
@@ -80,6 +79,16 @@ def load_tasks():
                     scheduler.enter(task_time_remaining, 1, task_action, argument=(task['id'], task['description']))
                     tasks.append(task)
                     task_id_counter = max(task_id_counter, task['id'] + 1)
+                elif abs(task_time_remaining) < task['duration']:
+                    # Restaurer la tâche dans le scheduler
+                    scheduler.enter(0, 1, task_action, argument=(task['id'], task['description']))
+                    tasks.append(task)
+                    task_id_counter = max(task_id_counter, task['id'] + 1)
+                else:
+                    # Restaurer la tâche dans la liste des tache passé
+                    tasks_history.append(task)
+                    task_id_counter = max(task_id_counter, task['id'] + 1)
+
 
 # Démarrer le planificateur dans un thread
 def run_scheduler():
@@ -92,13 +101,13 @@ scheduler_thread.start()
 
 # Fonction de la tâche à exécuter
 def task_action(task_id, description):
-    global record_seconds
     # Retirer la tâche des futures tâches
     task = next((t for t in tasks if t['id'] == task_id), None)
     if task:
         tasks.remove(task)
         task['time'] = time.time()  # Mettre à jour l'heure d'exécution
-        task_history.append(task)   # Déplacer dans l'historique
+        duration = task['duration'] # Mettre à jour la durée
+        tasks_history.append(task)   # Déplacer dans l'historique
         save_tasks()  # Sauvegarder après suppression
 
     #print(f"Task starts {task_id} executed: {description}")
@@ -118,9 +127,9 @@ def task_action(task_id, description):
     wavefile.setsampwidth(2)  # 2 octets pour 16 bits (int16)
     wavefile.setframerate(RATE)
   
-    print(record_seconds)
+    print(duration)
 
-    for _ in range(0, int(RATE / CHUNK * int(record_seconds))):
+    for _ in range(0, int(RATE / CHUNK*duration)):
         data = recorder.read()  # Lire un bloc de données
         # Convertir la liste en binaire (en int16)
         binary_data = struct.pack('<' + ('h' * len(data)), *data)
@@ -164,8 +173,8 @@ class TaskSchedulerWebApp:
     def list_past_tasks(self):
         t = datetime.now().strftime(fmt)
         response = f"%s<h2>List Past Tasks</h2>[Current time]<br>[{t}]<br>"%(style)
-        if len(task_history)>0:
-            for task in task_history:
+        if len(tasks_history)>0:
+            for task in tasks_history:
                 t = datetime.fromtimestamp(task['time']).strftime(fmt)
                 response += f"<br>[{task['id']}][{task['description']}]<br>[{t}]<br>"
         else:
@@ -227,8 +236,7 @@ class TaskSchedulerWebApp:
     @cherrypy.expose
     def schedule_task(self, schedule_task_time, duration):
         global task_id_counter
-        global record_seconds
-        record_seconds = duration
+        duration =  int(duration)
         task_time = (datetime.strptime(schedule_task_time, fmt_calender)).timestamp()
         delay = task_time - time.time()
         schedule_task_time_fmt = datetime.fromtimestamp(task_time).strftime(fmt)
@@ -240,10 +248,10 @@ class TaskSchedulerWebApp:
         #print(task_time)
         #print(schedule_task_time_fmt)
         #print()
-        description = "Task %d"%(task_id_counter)
+        description = "Task %d %d"%(task_id_counter, duration)
         # Ajouter la tâche dans le planificateur
         scheduler.enter(delay, 1, task_action, argument=(task_id, description))
-        tasks.append({"id": task_id, "description": description, "time": task_time})
+        tasks.append({"id": task_id, "description": description, "time": task_time, "duration": duration})
         save_tasks()  # Sauvegarder après ajout de la tâche
         return f"%sTask {task_id} scheduled to {schedule_task_time_fmt} <br><a href='/'>Back to Home</a>"%(style)
 
@@ -284,7 +292,8 @@ load_tasks()
 if __name__ == '__main__':
     cherrypy.quickstart(TaskSchedulerWebApp(), '/', {
         'global': {
-            'server.socket_host': '192.168.1.52',
+            #'server.socket_host': '192.168.1.52',
+            'server.socket_host': '0.0.0.0',
             'server.socket_port': 8080,
         }
     })
