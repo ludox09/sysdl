@@ -52,14 +52,26 @@ style = """<style>
            input, label {
                margin: 0.4rem 0;
            }
+           .wrapper-class input[type="radio"] {
+               width: 15px;
+           }
+           .wrapper-class label {
+               display: inline;
+               margin-left: 5px;
+           }
            </style>"""
 
+OUTPUT_DIR="tasks_output"
 TASK_FILE = "tasks.json"
 FORMAT = 'int16'        # Format des données (16 bits)
 CHANNELS = 1            # Nombre de canaux (mono)
 RATE = 16000            # Taux d'échantillonnage (16 kHz)
 CHUNK = 1024            # Taille des blocs de données
 
+
+def prepare_output():
+    if not os.path.exists(OUTPUT_DIR):
+        os.mkdir(OUTPUT_DIR)
 
 # Sauvegarder les tâches futures dans un fichier JSON
 def save_tasks():
@@ -118,16 +130,16 @@ def task_action(task_id, description):
     recorder = PvRecorder(device_index=-1, frame_length=CHUNK)
     recorder.start()
    
-    output_file = "%s.wav"%(datetime.now().strftime(fmt_output)) 
+    output_file = "%s/%s.wav"%(OUTPUT_DIR, datetime.now().strftime(fmt_output)) 
 
-    print("[START in %s]"%(output_file))
+    #print("[START in %s]"%(output_file))
     # Ouverture du fichier WAV en écriture
     wavefile = wave.open(output_file, 'wb')
     wavefile.setnchannels(CHANNELS)
     wavefile.setsampwidth(2)  # 2 octets pour 16 bits (int16)
     wavefile.setframerate(RATE)
   
-    print(duration)
+    #print(duration)
 
     for _ in range(0, int(RATE / CHUNK*duration)):
         data = recorder.read()  # Lire un bloc de données
@@ -135,7 +147,7 @@ def task_action(task_id, description):
         binary_data = struct.pack('<' + ('h' * len(data)), *data)
         wavefile.writeframes(binary_data)  # Écrire immédiatement dans le fichier
    
-    print("[End]")
+    #print("[End]")
     recorder.stop()
     recorder.delete()
     wavefile.close()
@@ -210,8 +222,13 @@ class TaskSchedulerWebApp:
          name="schedule_task_time"
          value="{value_date}"
          min="{min_date}"
-         max="{max_date}" />
-        <label>Duration (seconds): <input type="number" name="duration" value=5400 /></label><br>
+         max="{max_date}" /><br>
+
+         <div class="wrapper-class"><input type="radio" name="duration" value=10><label for="radio1">10</label></div>
+         <div class="wrapper-class"><input type="radio" name="duration" value=15><label for="radio1">15</label></div>
+         <div class="wrapper-class"><input type="radio" name="duration" value=60><label for="radio1">60</label></div>
+         <div class="wrapper-class"><input type="radio" name="duration" value=5400 checked><label for="radio1">5400</label></div>
+
         <input type="submit" value="Schedule Task" />
         </form>
          <a href='/'>Back to Home</a>
@@ -287,6 +304,7 @@ class TaskSchedulerWebApp:
 
 # Charger les tâches au démarrage
 load_tasks()
+prepare_output()
 
 # Lancer le serveur web CherryPy
 if __name__ == '__main__':
