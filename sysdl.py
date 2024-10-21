@@ -59,6 +59,9 @@ style = """<style>
                display: inline;
                margin-left: 5px;
            }
+           current {
+               color: #ffffaa;
+           }
            </style>"""
 
 OUTPUT_DIR="tasks_output"
@@ -161,37 +164,44 @@ class TaskSchedulerWebApp:
         return """
             %s
             <h2>Interface</h2><br>
-            <a href="/list_future_tasks">List Future Tasks</a><br><br>
-            <a href="/list_past_tasks">List Past Tasks</a><br><br>
-            <a href="/schedule_task_calender">Schedule New Task</a><br><br>
-            <a href="/remove_task_form">Remove Task</a><br>
+            <a href="/list_future_tasks">List Future Tasks</a><br>
+            <a href="/list_past_tasks">List Past Tasks</a><br>
+            <a href="/schedule_task_calender">Schedule New Task</a><br>
+            <a href="/files/">Tasks output</a><br>
         """%(style)
 
     @cherrypy.expose
     def list_future_tasks(self):
         t = datetime.now().strftime(fmt)
-        response = f"%s<h2>List Future Tasks</h2>[Current time]<br>[{t}]<br>"%(style)
+        response = f"""%s<h2>List Future Tasks</h2>"""%(style)
+        response += """<a href="/list_future_tasks">Refresh</a> <a href='/'>Back to Home</a> <br>"""
+        response += f"""<current>[{t}][Current time]</current>"""
         if len(tasks)>0:
             for task in tasks:
                 t = datetime.fromtimestamp(task['time']).strftime(fmt)
-                #response += f"<br>[{task['id']}][{t}][{task['description']}]"
-                response += f"<br>[{task['id']}][{task['description']}]<br>[{t}]<br>"
+                response += f"""<br>[{t}][{task['id']}][{task['description']}]"""
         else:
             response += f"<h3>No future tasks</h3>"
-        response += "<br><a href='/'>Back to Home</a>"
+        #response += "<br><a href='/'>Back to Home</a>"
+        response += self.remove_task_form()
         return response
 
     @cherrypy.expose
     def list_past_tasks(self):
         t = datetime.now().strftime(fmt)
-        response = f"%s<h2>List Past Tasks</h2>[Current time]<br>[{t}]<br>"%(style)
+        response = f"""%s<h2>List Past Tasks</h2>"""%(style)
+        response += """<a href="/list_past_tasks">Refresh</a> <a href='/'>Back to Home</a> <br>"""
+        response += f"""<current>[{t}][Current time]</current>"""
+
+
         if len(tasks_history)>0:
             for task in tasks_history:
                 t = datetime.fromtimestamp(task['time']).strftime(fmt)
-                response += f"<br>[{task['id']}][{task['description']}]<br>[{t}]<br>"
+                response += f"""<br>[{t}][{task['id']}][{task['description']}]"""
         else:
             response += f"<h3>No past tasks</h3>"
-        response += "<br><a href='/'>Back to Home</a>"
+        #response += "<br><a href='/'>Back to Home</a>"
+        response += self.remove_task_form()
         return response
 
     #@cherrypy.expose
@@ -237,22 +247,6 @@ class TaskSchedulerWebApp:
          <a href='/'>Back to Home</a>
         """%(style)
 
-    #@cherrypy.expose
-    #def schedule_task(self, description, delay):
-    #    global task_id_counter
-    #    delay = int(delay)
-    #    task_time = time.time() + delay
-    #    task_id = task_id_counter
-    #    task_id_counter += 1
-    #    
-    #    # Ajouter la tâche dans le planificateur
-    #    scheduler.enter(delay, 1, task_action, argument=(task_id, description))
-    #    tasks.append({"id": task_id, "description": description, "time": task_time})
-    #    
-    #    save_tasks()  # Sauvegarder après ajout de la tâche
-
-    #    return f"%sTask {task_id} scheduled for {delay} seconds from now.<br><a href='/'>Back to Home</a>"%(style)
-
     @cherrypy.expose
     def schedule_task(self, schedule_task_time, duration):
         global task_id_counter
@@ -273,20 +267,21 @@ class TaskSchedulerWebApp:
         scheduler.enter(delay, 1, task_action, argument=(task_id, description))
         tasks.append({"id": task_id, "description": description, "time": task_time, "duration": duration})
         save_tasks()  # Sauvegarder après ajout de la tâche
-        return f"%sTask {task_id} scheduled to {schedule_task_time_fmt} <br><a href='/'>Back to Home</a>"%(style)
+        response = f"%sTask {task_id} scheduled to {schedule_task_time_fmt} <br><a href='/'>Back to Home</a>"%(style)
+        response += self.list_future_tasks
+        return response
 
 
     @cherrypy.expose
     def remove_task_form(self):
         form = """
-        %s
-        <h2>Remove a Task</h2>
+        <p>Remove a Task</p>
         <form method="get" action="remove_task">
           <label>Task ID: <input type="number" name="task_id" /></label><br>
           <input type="submit" value="Remove Task" />
         </form>
         <a href='/'>Back to Home</a>
-        """%(style)
+        """
         return form
 
     @cherrypy.expose
@@ -304,6 +299,36 @@ class TaskSchedulerWebApp:
                         return f"%sTask {task_id} removed.<br><a href='/'>Back to Home</a>"%(style)
         
         return f"%sTask {task_id} not found.<br><a href='/'>Back to Home</a>"%(style)
+
+    @cherrypy.expose
+    def files(self, path=""):
+        # Chemin du répertoire de base
+        base_dir = OUTPUT_DIR  # Remplace avec le chemin réel
+        
+        # Construire le chemin complet en ajoutant la partie 'path' si elle est présente
+        full_path = os.path.join(base_dir, path)
+        
+        # Si c'est un fichier, le servir avec l'option de téléchargement
+        if os.path.isfile(full_path):
+            return cherrypy.lib.static.serve_file(full_path, "application/x-download", "attachment")
+        
+        # Si c'est un répertoire, lister son contenu
+        elif os.path.isdir(full_path):
+            # Liste les fichiers et dossiers
+            files = os.listdir(full_path)
+            
+            # Créer une liste cliquable pour chaque fichier/dossier
+            html = style
+            html += f"<h2>Tasks output</h2><ul>"
+            for file in files:
+                file_path = os.path.join(path, file)
+                html += f'<li><a href="/files/?path={file_path}">{file}</a></li>'
+            html += "</ul>"
+            html += "<br><a href='/'>Back to Home</a>"
+            return html
+        else:
+            return "Path not found"
+
 
 # Charger les tâches au démarrage
 load_tasks()
